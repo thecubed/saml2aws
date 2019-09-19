@@ -2,10 +2,13 @@ package googleapps
 
 import (
 	"bytes"
+	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -76,9 +79,10 @@ func (kc *Client) Authenticate(loginDetails *creds.LoginDetails) (string, error)
 			return "", errors.New("captcha image not found but requested")
 		}
 
-		fmt.Println("Open this link in a browser:\n", captchaPictureURL)
-
-		captcha := prompter.String("Captcha", "")
+		captcha, err := kc.tryDisplayCaptcha(captchaPictureURL)
+		if err != nil {
+			return "", err
+		}
 
 		captchaForm, captchaURL, err := extractInputsByFormID(responseDoc, "gaia_loginform")
 
@@ -101,6 +105,42 @@ func (kc *Client) Authenticate(loginDetails *creds.LoginDetails) (string, error)
 	}
 
 	return samlAssertion, nil
+}
+
+func (kc *Client) tryDisplayCaptcha(captchaPictureURL string) (string, error) {
+	// TODO: check for user flag for easy captcha presentation
+
+	if os.Getenv("TERM_PROGRAM") == "iTerm.app" {
+		// Use iTerm to show the image if available
+		return kc.iTermCaptchaPrompt(captchaPictureURL)
+	} else {
+		return simpleCaptchaPrompt(captchaPictureURL), nil
+	}
+}
+
+func (kc *Client) iTermCaptchaPrompt(captchaPictureURL string) (string, error) {
+	fmt.Printf("Detected iTerm, displaying URL: %s\n", captchaPictureURL)
+	imgResp, err := kc.client.Get(captchaPictureURL)
+	if err != nil {
+		return "", errors.Wrap(err, "unable to fetch captcha image")
+	}
+	var buf bytes.Buffer
+	b64Encoder := b64.NewEncoder(b64.StdEncoding, &buf)
+	_, _ = io.Copy(b64Encoder, imgResp.Body)
+	_ = b64Encoder.Close()
+
+	if os.Getenv("TERM") == "screen" {
+		fmt.Println("Detected tmux, using specific workaround...")
+		fmt.Printf("\033Ptmux;\033\033]1337;File=width=40;preserveAspectRatio=1;inline=1;:%s\a\033\\\n", buf.String())
+	} else {
+		fmt.Printf("\033]1337;File=width=40;preserveAspectRatio=1;inline=1;:%s\a\n", buf.String())
+	}
+	return prompter.String("Captcha", ""), nil
+}
+
+func simpleCaptchaPrompt(captchaPictureURL string) string {
+	fmt.Println("Open this link in a browser:\n", captchaPictureURL)
+	return prompter.String("Captcha", "")
 }
 
 func (kc *Client) loadFirstPage(loginDetails *creds.LoginDetails) (string, url.Values, error) {
@@ -268,6 +308,15 @@ func (kc *Client) loadChallengePage(submitURL string, referer string, authForm u
 			responseForm.Set("TrustDevice", "on") // Don't ask again on this computer
 
 			return kc.loadResponsePage(u.String(), submitURL, responseForm)
+
+		case strings.Contains(secondActionURL, "challenge/skotp/"): // handle one-time HOTP challenge
+			fmt.Println("Get a one-time code by visiting https://g.co/sc on another device where you can use your security key")
+			var token = prompter.RequestSecurityCode("000 000")
+
+			responseForm.Set("Pin", token)
+			responseForm.Set("TrustDevice", "on") // Don't ask again on this computer
+
+			return kc.loadResponsePage(u.String(), submitURL, responseForm)
 		}
 
 		skipResponseForm, skipActionURL, err := extractInputsByFormQuery(doc, `[action$="skip"]`)
@@ -321,7 +370,8 @@ func (kc *Client) loadAlternateChallengePage(submitURL string, referer string, a
 
 		if strings.Contains(action, "challenge/totp/") ||
 			strings.Contains(action, "challenge/ipp/") ||
-			strings.Contains(action, "challenge/az/") {
+			strings.Contains(action, "challenge/az/") ||
+			strings.Contains(action, "challenge/skotp/"){
 
 			challengeEntry, _ = s.Attr("data-challengeentry")
 			return false

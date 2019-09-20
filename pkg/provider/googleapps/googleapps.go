@@ -166,11 +166,11 @@ func (kc *Client) loadFirstPage(loginDetails *creds.LoginDetails) (string, url.V
 	}
 
 	postForm := url.Values{
-		"bgresponse":      []string{"js_disabled"},
-		"checkConnection": []string{""},
-		"checkedDomains":  []string{"youtube"},
-		"continue":        []string{authForm.Get("continue")},
-		"gxf":             []string{authForm.Get("gxf")},
+		"bgresponse":               []string{"js_disabled"},
+		"checkConnection":          []string{""},
+		"checkedDomains":           []string{"youtube"},
+		"continue":                 []string{authForm.Get("continue")},
+		"gxf":                      []string{authForm.Get("gxf")},
 		"identifier-captcha-input": []string{""},
 		"identifiertoken":          []string{""},
 		"identifiertoken_audio":    []string{""},
@@ -371,7 +371,7 @@ func (kc *Client) loadAlternateChallengePage(submitURL string, referer string, a
 		if strings.Contains(action, "challenge/totp/") ||
 			strings.Contains(action, "challenge/ipp/") ||
 			strings.Contains(action, "challenge/az/") ||
-			strings.Contains(action, "challenge/skotp/"){
+			strings.Contains(action, "challenge/skotp/") {
 
 			challengeEntry, _ = s.Attr("data-challengeentry")
 			return false

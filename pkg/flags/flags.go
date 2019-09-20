@@ -25,6 +25,7 @@ type CommonFlags struct {
 	Profile              string
 	Subdomain            string
 	ResourceID           string
+	Region               string
 }
 
 // LoginExecFlags flags for the Login / Exec commands
@@ -81,5 +82,9 @@ func ApplyFlagOverrides(commonFlags *CommonFlags, account *cfg.IDPAccount) {
 	}
 	if commonFlags.ResourceID != "" {
 		account.ResourceID = commonFlags.ResourceID
+	}
+
+	if commonFlags.Region != "" {
+		account.Region = commonFlags.Region
 	}
 }
